@@ -85,4 +85,10 @@ fi
 helm init --service-account tiller --override 'spec.template.spec.containers[0].command'='{/tiller,--storage=secret}' --history-max 3 --upgrade --wait &> $LOG_FILE
 
 ## Deploy
-helm upgrade --install --force --namespace ${DEPLOYMENT_NAMESPACE} -f components/${DEPLOYMENT_ID}.yaml $DEPLOYMENT_ID ${DEPLOYMENT_CHART}
+if [ -z "${DEPLOYMENT_CHART_VERSION}" ]; then
+  echo " - Deploying chart ${DEPLOYMENT_CHART} into ${DEPLOYMENT_NAMESPACE}"
+  helm upgrade --install --force --namespace ${DEPLOYMENT_NAMESPACE} -f components/${DEPLOYMENT_ID}.yaml $DEPLOYMENT_ID ${DEPLOYMENT_CHART}
+else
+  echo " - Deploying chart ${DEPLOYMENT_CHART} - ${DEPLOYMENT_CHART_VERSION} into ${DEPLOYMENT_NAMESPACE}"
+  helm upgrade --install --force --namespace ${DEPLOYMENT_NAMESPACE} -f components/${DEPLOYMENT_ID}.yaml --version ${DEPLOYMENT_CHART_VERSION} $DEPLOYMENT_ID ${DEPLOYMENT_CHART} 
+fi
