@@ -1,0 +1,88 @@
+#!/bin/sh
+set -e
+
+###
+# Helm Deployment Script (with Tiller / RBAC)
+#
+# Variables:
+#  DEPLOYMENT_NAMESPACE: Namespace, the workload will be deployed to
+#  DEPLOYMENT_CHART: The chart, that should be installed
+#  DEPLOYMENT_CHART_VERSION: The version of the chart to use (optional)
+#  DEPLOYMENT_CLUSTER_ADMIN: default false, if true the tiller service will get the cluster admin role assigned. Only use this to deploy system components.
+#  LOG_FILE: Logfile for more detailed logs, will be printed in case of error
+###
+
+###
+# Initialize Script
+###
+echo "Using Helm Deployment Script - v0.0.1"
+DEPLOYMENT_CLUSTER_ADMIN=${DEPLOYMENT_CLUSTER_ADMIN:-"false"}
+LOG_FILE=${LOG_FILE:-"log.txt"}
+touch $LOG_FILE
+
+###
+# Error Trap
+###
+function scriptError {
+  ## Print Full Log
+  echo "Full Log:"
+  cat $LOG_FILE
+}
+trap scriptError SIGHUP
+trap scriptError SIGINT
+trap scriptError SIGTERM
+
+# Initialize Helm
+echo " - Initializing Helm Client"
+helm init --client-only --skip-refresh &> $LOG_FILE
+
+# Add Repositories (if used in current deployment)
+CHART_REPOSITORY=$(echo $DEPLOYMENT_CHART | cut -d '/' -f 1)
+echo " - Chart Repository: ${CHART_REPOSITORY}" &> $LOG_FILE
+
+# Check if the repository is known / needs to be added for the deployment to work
+if [ "$CHART_REPOSITORY" != "stable" ]; then
+  # if the repo isn't stable/ then we're using a custom repository that we need to initialize
+  echo " - Using custom chart repository: ${CHART_REPOSITORY}"
+
+  if [ "$CHART_REPOSITORY" == "incubator" ]; then
+    helm repo add incubator https://kubernetes-charts-incubator.storage.googleapis.com/ &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "rancher-stable" ]; then
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "appscode" ]; then
+    helm repo add appscode https://charts.appscode.com/stable/ &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "philippheuer" ]; then
+    helm repo add philippheuer https://philippheuer.gitlab.io/kubernetes-charts &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "jetstack" ]; then
+    helm repo add jetstack https://charts.jetstack.io &> $LOG_FILE
+  fi
+fi
+helm repo update &> $LOG_FILE
+
+##
+# Run Deployment
+##
+
+## Tiller Namespace
+export TILLER_NAMESPACE=${DEPLOYMENT_NAMESPACE}
+
+## Create Namespace
+kubectl create namespace ${DEPLOYMENT_NAMESPACE} &> $LOG_FILE || true
+
+## Service Account
+kubectl create serviceaccount --namespace ${DEPLOYMENT_NAMESPACE} tiller &> $LOG_FILE || true
+
+## Service Account Permissions (namespace admin or cluster admin, depending on $DEPLOYMENT_CLUSTER_ADMIN)
+if [ "$DEPLOYMENT_CLUSTER_ADMIN" == "true" ]; then
+  echo " - Granting tiller cluster-admin role."
+  kubectl create clusterrolebinding ${DEPLOYMENT_NAMESPACE}-tiller-rule --clusterrole=cluster-admin --serviceaccount=${DEPLOYMENT_NAMESPACE}:tiller &> $LOG_FILE || true
+else
+  echo " - Granting tiller admin role."
+  kubectl create rolebinding ${DEPLOYMENT_NAMESPACE}-tiller-binding --namespace=${DEPLOYMENT_NAMESPACE} --clusterrole=admin --serviceaccount=${DEPLOYMENT_NAMESPACE}:tiller &> $LOG_FILE || true
+fi
+
+## Install Tiller
+helm init --service-account tiller --override 'spec.template.spec.containers[0].command'='{/tiller,--storage=secret}' --history-max 3 --upgrade --wait &> $LOG_FILE
+
+## Deploy
+helm upgrade --install --force --namespace ${DEPLOYMENT_NAMESPACE} -f components/${DEPLOYMENT_ID}.yaml $DEPLOYMENT_ID ${DEPLOYMENT_CHART}
