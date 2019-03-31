@@ -46,15 +46,17 @@ if [ "$CHART_REPOSITORY" != "stable" ]; then
   echo " - Using custom chart repository: ${CHART_REPOSITORY}"
 
   if [ "$CHART_REPOSITORY" == "incubator" ]; then
-    helm repo add incubator https://kubernetes-charts-incubator.storage.googleapis.com/ &> $LOG_FILE
+    helm repo add incubator https://kubernetes-charts-incubator.storage.googleapis.com &> $LOG_FILE
   elif [ "$CHART_REPOSITORY" == "rancher-stable" ]; then
     helm repo add rancher-stable https://releases.rancher.com/server-charts/stable &> $LOG_FILE
   elif [ "$CHART_REPOSITORY" == "appscode" ]; then
-    helm repo add appscode https://charts.appscode.com/stable/ &> $LOG_FILE
-  elif [ "$CHART_REPOSITORY" == "philippheuer" ]; then
-    helm repo add philippheuer https://philippheuer.gitlab.io/kubernetes-charts &> $LOG_FILE
+    helm repo add appscode https://charts.appscode.com/stable &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "gitlab" ]; then
+    helm repo add gitlab https://charts.gitlab.io &> $LOG_FILE
   elif [ "$CHART_REPOSITORY" == "jetstack" ]; then
     helm repo add jetstack https://charts.jetstack.io &> $LOG_FILE
+  elif [ "$CHART_REPOSITORY" == "philippheuer" ]; then
+    helm repo add philippheuer https://philippheuer.gitlab.io/kubernetes-charts &> $LOG_FILE
   fi
 fi
 helm repo update &> $LOG_FILE
