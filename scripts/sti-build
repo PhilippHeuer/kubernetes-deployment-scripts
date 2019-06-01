@@ -1,0 +1,71 @@
+#!/bin/bash
+set -e
+
+###
+# S2I Build Script
+#
+# Variables:
+#  DEPLOYMENT_NAMESPACE: Namespace, the workload will be deployed to
+#
+# All variables can also be set in a .s2i.yaml
+###
+
+# initialize script
+echo "Using S2I Build Script - v0.0.1"
+S2I_CONFIG_DIRECTORY=${S2I_CONFIG_DIRECTORY:-"$PWD"}
+
+# try to load yaml
+function parse_yaml {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\):|\1|" \
+        -e "s|^\($s\)\($w\)$s:$s[\"']\(.*\)[\"']$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
+}
+
+CONFIG_FILE=$S2I_CONFIG_DIRECTORY/.s2i.yml
+echo "Checking for configuration file: ${CONFIG_FILE}"
+if test -f "$CONFIG_FILE"; then
+    eval $(parse_yaml $CONFIG_FILE "FROMFILE_")
+
+    if [ -n "$FROMFILE_s2i_builder_image" ]; then
+        S2I_BUILDER_IMAGE=$FROMFILE_s2i_builder_image
+    fi
+    if [ -n "$FROMFILE_s2i_runtime_image" ]; then
+        S2I_RUNTIME_IMAGE=$FROMFILE_s2i_runtime_image
+    fi
+    if [ -n "$FROMFILE_s2i_runtime_source" ]; then
+        S2I_RUNTIME_SOURCE=$FROMFILE_s2i_runtime_source
+    fi
+    if [ -n "$FROMFILE_s2i_runtime_target" ]; then
+        S2I_RUNTIME_TARGET=$FROMFILE_s2i_runtime_target
+    fi
+fi
+
+# configuration properties
+S2I_SOURCE_DIRECTORY=${S2I_SOURCE_DIRECTORY:-"$PWD"}
+S2I_BUILDER_IMAGE=${S2I_BUILDER_IMAGE:-"s2i-copy:latest"}
+S2I_TARGET_IMAGE=${S2I_TARGET_IMAGE:-"s2i-app:latest"}
+S2I_RUNTIME_IMAGE=${S2I_RUNTIME_IMAGE:-"runtime:latest"}
+S2I_RUNTIME_SOURCE=${S2I_RUNTIME_SOURCE:-"/tmp"}
+S2I_RUNTIME_TARGET=${S2I_RUNTIME_TARGET:-"."}
+
+# print script info
+echo "S2I Source Directory: ${S2I_SOURCE_DIRECTORY}"
+echo "S2I Builder Image: ${S2I_BUILDER_IMAGE}"
+echo "S2I Runtime Image: ${S2I_RUNTIME_IMAGE}"
+echo "S2I Runtime Artifact Source: ${S2I_RUNTIME_SOURCE}"
+echo "S2I Runtime Artifact Target: ${S2I_RUNTIME_TARGET}"
+echo "S2I Target Image: ${S2I_TARGET_IMAGE}"
+
+# run s2i build
+s2i build $S2I_SOURCE_DIRECTORY $S2I_BUILDER_IMAGE $S2I_TARGET_IMAGE --runtime-image $S2I_RUNTIME_IMAGE --runtime-artifact ${S2I_RUNTIME_SOURCE}:${S2I_RUNTIME_TARGET} --copy
